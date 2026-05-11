@@ -23,8 +23,27 @@ def test_state_snapshot(client: TestClient, fake_webos_client) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is True
+    assert body["reachable"] is True
     assert body["volume"] == 14
     assert "netflix" in body["apps"]
+
+
+def test_state_snapshot_when_tv_unreachable(
+    client: TestClient, fake_webos_client
+) -> None:
+    """If connect() raises TimeoutError, /state must still return 200 with
+    a clean 'off' snapshot — not 502. This is the contract the Telegram
+    /tv state command relies on."""
+    fake_webos_client.is_connected = lambda: False
+    fake_webos_client.connect.side_effect = TimeoutError()
+    r = client.get("/state")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["reachable"] is False
+    assert body["is_on"] is False
+    assert body["volume"] is None
+    assert body["apps"] == []
 
 
 def test_volume_absolute(client: TestClient, fake_webos_client) -> None:

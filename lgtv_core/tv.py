@@ -18,6 +18,23 @@ from .config import Settings
 log = logging.getLogger(__name__)
 
 
+def _unreachable_snapshot() -> dict[str, Any]:
+    """Canonical 'TV is off / unreachable' state. Always shape-compatible
+    with a real state so clients can render either uniformly."""
+    return {
+        "reachable": False,
+        "is_on": False,
+        "is_screen_on": False,
+        "current_app_id": None,
+        "current_channel": None,
+        "muted": None,
+        "volume": None,
+        "sound_output": None,
+        "apps": [],
+        "inputs": [],
+    }
+
+
 KEY_TO_BUTTON = {
     "HOME": "HOME",
     "BACK": "BACK",
@@ -98,9 +115,23 @@ class TVDriver:
         await self.aclose()
 
     async def state_snapshot(self) -> dict[str, Any]:
-        c = await self._ensure_client()
+        """Return the current TV state.
+
+        If the TV is unreachable (in deep standby, off, or LAN-disconnected),
+        we surface that as a clean `reachable=False, is_on=False` snapshot
+        rather than raising — clients use this endpoint to *check* state,
+        and "TV is off" is a valid answer, not an error.
+        """
+        try:
+            c = await self._ensure_client()
+        except (TimeoutError, OSError, ConnectionError) as e:
+            log.info("state_snapshot: TV unreachable (%s)", type(e).__name__)
+            # Drop any stale client so the next call starts clean.
+            self._client = None
+            return _unreachable_snapshot()
         s = c.tv_state
         return {
+            "reachable": True,
             "is_on": s.is_on,
             "is_screen_on": s.is_screen_on,
             "current_app_id": s.current_app_id,
