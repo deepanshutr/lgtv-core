@@ -1,0 +1,20 @@
+[Unit]
+Description=lgtv-core — LG webOS TV control daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/lgtv/state.env
+ExecStart=%h/.local/bin/lgtv-core serve
+Restart=on-failure
+RestartSec=5
+
+# Hardening (only flags that work in user-scope per project-wide notes)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=%h/.config/lgtv
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,46 @@
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist + wheel
+        run: |
+          pip install build
+          python -m build
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          generate_release_notes: true
+
+  notify:
+    needs: build-and-release
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+      TG_CHAT_ID:   ${{ secrets.TG_CHAT_ID }}
+      STATUS:       ${{ needs.build-and-release.result }}
+      REF_NAME:     ${{ github.ref_name }}
+    steps:
+      - name: Notify Telegram
+        if: env.TG_BOT_TOKEN != ''
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
+            -d "chat_id=$TG_CHAT_ID" \
+            -d "parse_mode=HTML" \
+            --data-urlencode "text=<b>lgtv-core $REF_NAME</b> release: $STATUS"
