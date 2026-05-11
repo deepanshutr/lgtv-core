@@ -66,4 +66,4 @@ def test_key_unknown_returns_502(client: TestClient) -> None:
 def test_pointer_move(client: TestClient, fake_webos_client) -> None:
     r = client.post("/pointer/move", json={"dx": 12, "dy": -4})
     assert r.status_code == 200
-    fake_webos_client.move_cursor.assert_awaited_once_with(12, -4)
+    fake_webos_client.move.assert_awaited_once_with(12, -4)

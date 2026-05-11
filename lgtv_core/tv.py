@@ -99,13 +99,17 @@ class TVDriver:
 
     async def state_snapshot(self) -> dict[str, Any]:
         c = await self._ensure_client()
+        s = c.tv_state
         return {
-            "current_app_id": c.current_app_id,
-            "current_channel": c.current_channel,
-            "muted": c.muted,
-            "volume": c.volume,
-            "apps": list(c.apps.keys()) if c.apps else [],
-            "inputs": [i.id for i in (c.inputs or {}).values()] if c.inputs else [],
+            "is_on": s.is_on,
+            "is_screen_on": s.is_screen_on,
+            "current_app_id": s.current_app_id,
+            "current_channel": s.current_channel,
+            "muted": s.muted,
+            "volume": s.volume,
+            "sound_output": s.sound_output,
+            "apps": list(s.apps.keys()) if s.apps else [],
+            "inputs": list(s.inputs.keys()) if s.inputs else [],
         }
 
     async def set_volume(self, level: int) -> None:
@@ -141,8 +145,8 @@ class TVDriver:
 
     async def pointer_move(self, dx: int, dy: int) -> None:
         c = await self._ensure_client()
-        await c.move_cursor(dx, dy)
+        await c.move(dx, dy)
 
     async def pointer_click(self) -> None:
         c = await self._ensure_client()
-        await c.click_button()
+        await c.click()

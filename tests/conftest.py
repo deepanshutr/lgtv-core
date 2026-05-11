@@ -27,12 +27,18 @@ def fake_webos_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     client.connect = AsyncMock()
     client.disconnect = AsyncMock()
     client.client_key = "fake-key-abcdef0123"
-    client.current_app_id = "com.webos.app.livetv"
-    client.current_channel = None
-    client.muted = False
-    client.volume = 14
-    client.apps = {"netflix": MagicMock(), "youtube.leanback.v4": MagicMock()}
-    client.inputs = {}
+    # Real aiowebostv exposes state under client.tv_state (a dataclass).
+    state = MagicMock()
+    state.is_on = True
+    state.is_screen_on = True
+    state.current_app_id = "com.webos.app.livetv"
+    state.current_channel = None
+    state.muted = False
+    state.volume = 14
+    state.sound_output = "tv_speaker"
+    state.apps = {"netflix": MagicMock(), "youtube.leanback.v4": MagicMock()}
+    state.inputs = {}
+    client.tv_state = state
     client.power_off = AsyncMock()
     client.set_volume = AsyncMock()
     client.volume_up = AsyncMock()
@@ -41,11 +47,10 @@ def fake_webos_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     client.launch_app = AsyncMock()
     client.set_input = AsyncMock()
     client.button = AsyncMock()
-    client.move_cursor = AsyncMock()
-    client.click_button = AsyncMock()
+    client.move = AsyncMock()
+    client.click = AsyncMock()
 
     def _factory(*args, **kwargs):
-        # capture the key the driver tried to use
         client._init_key = kwargs.get("client_key")
         return client
 
