@@ -27,7 +27,7 @@ process, and pairing happens exactly once.
 ## Quick start
 
 ```bash
-# 1. Install
+# 1. Install (requires Python 3.11+)
 uv venv && uv pip install -e .
 
 # 2. Configure (one-time)
