@@ -30,6 +30,8 @@ class MuteReq(BaseModel):
 
 class AppReq(BaseModel):
     id: str
+    content_id: str | None = None
+    params: dict[str, Any] | None = None
 
 
 class InputReq(BaseModel):
@@ -121,7 +123,9 @@ def create_app() -> FastAPI:
 
     @app.post("/app/launch")
     async def launch_app(req: AppReq) -> dict[str, Any]:
-        return await _wrap(lambda: driver.launch_app(req.id))()
+        return await _wrap(
+            lambda: driver.launch_app(req.id, req.content_id, req.params)
+        )()
 
     @app.post("/input/switch")
     async def switch_input(req: InputReq) -> dict[str, Any]:

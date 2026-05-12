@@ -227,9 +227,26 @@ class TVDriver:
         c = await self._ensure_client()
         await c.set_mute(on)
 
-    async def launch_app(self, app_id: str) -> None:
+    async def launch_app(
+        self,
+        app_id: str,
+        content_id: str | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> None:
+        """Launch an app. With `content_id` (e.g. a YouTube video ID) the
+        TV deep-links into that piece of content. With `params` the daemon
+        forwards an arbitrary payload that some webOS apps honour (e.g.
+        YouTube accepts `{"contentTarget": "<url>"}`).
+
+        Mutually exclusive: pass at most one of content_id / params.
+        """
         c = await self._ensure_client()
-        await c.launch_app(app_id)
+        if content_id is not None:
+            await c.launch_app_with_content_id(app_id, content_id)
+        elif params is not None:
+            await c.launch_app_with_params(app_id, params)
+        else:
+            await c.launch_app(app_id)
 
     async def switch_input(self, input_id: str) -> None:
         c = await self._ensure_client()
