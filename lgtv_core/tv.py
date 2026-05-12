@@ -89,6 +89,13 @@ class TVDriver:
             )
         return discovered
 
+    _CONNECT_TIMEOUT_S = 2.5
+
+    async def _connect_with_timeout(self, client: WebOsClient) -> None:
+        """Bound the WS connect so a bogus IP fails fast instead of hanging
+        on the OS-default TCP timeout (often 60-130s)."""
+        await asyncio.wait_for(client.connect(), timeout=self._CONNECT_TIMEOUT_S)
+
     async def _ensure_client(self) -> WebOsClient:
         async with self._lock:
             if self._client is not None and self._client.is_connected():
@@ -98,7 +105,7 @@ class TVDriver:
             host = self._active_host(saved)
             try:
                 self._client = WebOsClient(host, client_key=key)
-                await self._client.connect()
+                await self._connect_with_timeout(self._client)
             except (OSError, ConnectionError, TimeoutError):
                 # Maybe the TV's IP rolled. SSDP-rediscover and retry once.
                 self._client = None
@@ -106,7 +113,7 @@ class TVDriver:
                 if not discovered or discovered == host:
                     raise
                 self._client = WebOsClient(discovered, client_key=key)
-                await self._client.connect()
+                await self._connect_with_timeout(self._client)
             # Persist any newly-issued key
             if self._client.client_key and self._client.client_key != key:
                 saved["client_key"] = self._client.client_key
@@ -161,6 +168,13 @@ class TVDriver:
                 "Settings → General → Quick Start+ and Settings → Connection → "
                 "Mobile TV On."
             )
+        # Pre-warm the WS connection so the next /state / /volume / /key call
+        # doesn't pay the TLS-handshake cost on a freshly-woken TV. Failure
+        # here is non-fatal (the next user call will retry).
+        try:
+            await self._ensure_client()
+        except Exception as e:
+            log.info("wake: pre-warm connect failed (non-fatal): %s", type(e).__name__)
 
     async def power_off(self) -> None:
         c = await self._ensure_client()

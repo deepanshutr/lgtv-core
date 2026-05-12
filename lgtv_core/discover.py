@@ -22,12 +22,18 @@ SSDP_PORT = 1900
 LG_ST = "urn:lge-com:service:webos-second-screen:1"
 
 
-def _build_msearch() -> bytes:
+def _build_msearch(mx: int = 1) -> bytes:
+    """Build an SSDP M-SEARCH request.
+
+    `mx` is the max-wait hint to responders; we send a low value (1s) and
+    burst multiple packets to keep median latency low while still allowing
+    re-broadcasts in case of UDP loss.
+    """
     return (
         "M-SEARCH * HTTP/1.1\r\n"
         f"HOST: {SSDP_GROUP}:{SSDP_PORT}\r\n"
         'MAN: "ssdp:discover"\r\n'
-        "MX: 2\r\n"
+        f"MX: {mx}\r\n"
         f"ST: {LG_ST}\r\n"
         "\r\n"
     ).encode()
@@ -42,12 +48,19 @@ def _matches(payload: str, uuid_match: str | None) -> bool:
 
 
 def _discover_blocking(timeout_s: float, uuid_match: str | None) -> str | None:
-    """Send M-SEARCH, read responses until timeout or match."""
+    """Send M-SEARCH, read responses until timeout or match.
+
+    Sends an initial burst of 3 M-SEARCH packets (with MX=1) so a UDP drop
+    on the first packet doesn't add 300ms-1s to discovery. The TV typically
+    responds within 100ms of the first arriving packet.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
     try:
-        sock.sendto(_build_msearch(), (SSDP_GROUP, SSDP_PORT))
+        msg = _build_msearch(mx=1)
+        for _ in range(3):
+            sock.sendto(msg, (SSDP_GROUP, SSDP_PORT))
         deadline = time.monotonic() + timeout_s
         while True:
             remaining = deadline - time.monotonic()
@@ -65,7 +78,7 @@ def _discover_blocking(timeout_s: float, uuid_match: str | None) -> str | None:
 
 
 async def discover_tv(
-    timeout_s: float = 3.0, uuid_match: str | None = None
+    timeout_s: float = 1.5, uuid_match: str | None = None
 ) -> str | None:
     """Find the LG TV's current LAN IP via SSDP, or None if not found.
 

@@ -49,16 +49,22 @@ def send_wol(mac: str, host: str | None = None) -> None:
 
 
 async def wait_for_port(host: str, port: int, timeout_s: float) -> bool:
-    """Poll until a TCP connect succeeds or timeout elapses."""
-    deadline = asyncio.get_event_loop().time() + timeout_s
-    while asyncio.get_event_loop().time() < deadline:
+    """Poll until a TCP connect succeeds or timeout elapses.
+
+    Aggressive 100ms cadence with 300ms per-connect timeout. WoL → TCP-ready
+    is typically 1.5-3s of TV-side NIC boot, so polling fast doesn't waste
+    work but does cut latency by up to ~400ms vs. a 500ms cadence.
+    """
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout_s
+    while loop.time() < deadline:
         try:
             _, w = await asyncio.wait_for(
-                asyncio.open_connection(host, port), timeout=1.0
+                asyncio.open_connection(host, port), timeout=0.3
             )
             w.close()
             await w.wait_closed()
             return True
         except (TimeoutError, OSError):
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
     return False

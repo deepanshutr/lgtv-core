@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
@@ -52,9 +53,28 @@ def create_app() -> FastAPI:
     logging.basicConfig(level=settings.log_level)
     driver = TVDriver(settings)
 
+    async def _eager_connect() -> None:
+        """Background WS warm-up so the first business call is hot. Must not
+        block lifespan startup — uvicorn waits for lifespan-start to finish
+        before binding the socket, so doing this synchronously would delay
+        the daemon's readiness by ~3-4s."""
+        try:
+            await driver._ensure_client()
+            log.info("Eagerly connected to TV at startup")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.info(
+                "Startup eager-connect skipped (TV likely off): %s",
+                type(e).__name__,
+            )
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        warm_task = asyncio.create_task(_eager_connect())
         yield
+        if not warm_task.done():
+            warm_task.cancel()
         await driver.aclose()
 
     app = FastAPI(title="lgtv-core", version="0.1.0", lifespan=lifespan)
