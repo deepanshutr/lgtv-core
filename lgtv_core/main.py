@@ -28,10 +28,27 @@ class MuteReq(BaseModel):
     on: bool
 
 
+class PostKey(BaseModel):
+    """A single key press scheduled after app launch."""
+
+    name: str
+    after_ms: int = Field(0, ge=0, le=30000, description="Wait this many ms before pressing")
+
+
 class AppReq(BaseModel):
     id: str
     content_id: str | None = None
     params: dict[str, Any] | None = None
+    post_launch_delay_ms: int = Field(
+        0,
+        ge=0,
+        le=30000,
+        description="Wait this many ms after the launch call returns before sending post_keys. Use for apps that need time to render a profile/welcome screen.",
+    )
+    post_keys: list[PostKey] | None = Field(
+        None,
+        description="Key presses to play AFTER the launch (e.g. ENTER to dismiss a profile screen). Each key's `after_ms` is the delay before pressing it (in addition to post_launch_delay_ms before the first one).",
+    )
 
 
 class InputReq(BaseModel):
@@ -123,8 +140,19 @@ def create_app() -> FastAPI:
 
     @app.post("/app/launch")
     async def launch_app(req: AppReq) -> dict[str, Any]:
+        post_keys = (
+            [{"name": k.name, "after_ms": k.after_ms} for k in req.post_keys]
+            if req.post_keys
+            else None
+        )
         return await _wrap(
-            lambda: driver.launch_app(req.id, req.content_id, req.params)
+            lambda: driver.launch_app(
+                req.id,
+                req.content_id,
+                req.params,
+                req.post_launch_delay_ms,
+                post_keys,
+            )
         )()
 
     @app.post("/input/switch")

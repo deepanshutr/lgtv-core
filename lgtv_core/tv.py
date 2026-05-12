@@ -232,13 +232,20 @@ class TVDriver:
         app_id: str,
         content_id: str | None = None,
         params: dict[str, Any] | None = None,
+        post_launch_delay_ms: int = 0,
+        post_keys: list[dict[str, Any]] | None = None,
     ) -> None:
-        """Launch an app. With `content_id` (e.g. a YouTube video ID) the
-        TV deep-links into that piece of content. With `params` the daemon
-        forwards an arbitrary payload that some webOS apps honour (e.g.
-        YouTube accepts `{"contentTarget": "<url>"}`).
+        """Launch an app, optionally deep-linking and then driving the remote.
 
-        Mutually exclusive: pass at most one of content_id / params.
+        - `content_id`: app-specific deep-link key (e.g. YouTube video ID).
+        - `params`: arbitrary launch params (e.g. {"contentTarget": "..."}).
+          Mutually exclusive with content_id.
+        - `post_launch_delay_ms`: wait this long before the first post_key.
+          Use for apps that need to render a profile/welcome screen first.
+        - `post_keys`: list of {name, after_ms} dicts. Each key's after_ms is
+          the delay BEFORE pressing it (cumulative on top of post_launch_delay_ms
+          for the first one). Lets us dismiss profile pickers, hit Play, etc.
+          all in one daemon call instead of N curl roundtrips.
         """
         c = await self._ensure_client()
         if content_id is not None:
@@ -247,6 +254,19 @@ class TVDriver:
             await c.launch_app_with_params(app_id, params)
         else:
             await c.launch_app(app_id)
+
+        if post_launch_delay_ms > 0:
+            await asyncio.sleep(post_launch_delay_ms / 1000.0)
+        if post_keys:
+            for k in post_keys:
+                after_ms = int(k.get("after_ms", 0) or 0)
+                if after_ms > 0:
+                    await asyncio.sleep(after_ms / 1000.0)
+                button = KEY_TO_BUTTON.get(str(k["name"]).upper())
+                if button is None:
+                    log.warning("launch_app: unknown post_key %r, skipping", k["name"])
+                    continue
+                await c.button(button)
 
     async def switch_input(self, input_id: str) -> None:
         c = await self._ensure_client()
