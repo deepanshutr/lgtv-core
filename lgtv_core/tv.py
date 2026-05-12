@@ -104,9 +104,19 @@ class TVDriver:
         await client.disconnect()
         return client.client_key
 
-    async def wake(self) -> bool:
-        wol.send_wol(self.settings.mac)
-        return await wol.wait_for_port(self.settings.host, 3001, self.settings.wake_timeout)
+    async def wake(self) -> None:
+        wol.send_wol(self.settings.mac, host=self.settings.host)
+        ready = await wol.wait_for_port(
+            self.settings.host, 3001, self.settings.wake_timeout
+        )
+        if not ready:
+            raise RuntimeError(
+                f"TV at {self.settings.host} did not become reachable on :3001 "
+                f"within {self.settings.wake_timeout}s. "
+                "If the TV is fully powered off, WoL cannot wake it — check "
+                "Settings → General → Quick Start+ and Settings → Connection → "
+                "Mobile TV On."
+            )
 
     async def power_off(self) -> None:
         c = await self._ensure_client()
