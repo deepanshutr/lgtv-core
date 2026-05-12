@@ -227,6 +227,12 @@ class TVDriver:
         c = await self._ensure_client()
         await c.set_mute(on)
 
+    async def set_sound_output(self, output: str) -> None:
+        """Route TV audio to a specific output. Common values:
+        tv_speaker, external_arc, external_optical, bt_soundbar, headphone."""
+        c = await self._ensure_client()
+        await c.change_sound_output(output)
+
     async def launch_app(
         self,
         app_id: str,

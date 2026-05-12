@@ -28,6 +28,13 @@ class MuteReq(BaseModel):
     on: bool
 
 
+class SoundOutputReq(BaseModel):
+    output: str = Field(
+        ...,
+        description="One of: tv_speaker, external_arc, external_optical, bt_soundbar, headphone, tv_external_speaker",
+    )
+
+
 class PostKey(BaseModel):
     """A single key press scheduled after app launch."""
 
@@ -137,6 +144,10 @@ def create_app() -> FastAPI:
     @app.post("/mute")
     async def mute(req: MuteReq) -> dict[str, Any]:
         return await _wrap(lambda: driver.set_mute(req.on))()
+
+    @app.post("/sound_output")
+    async def sound_output(req: SoundOutputReq) -> dict[str, Any]:
+        return await _wrap(lambda: driver.set_sound_output(req.output))()
 
     @app.post("/app/launch")
     async def launch_app(req: AppReq) -> dict[str, Any]:
