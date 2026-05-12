@@ -12,7 +12,7 @@ from typing import Any
 
 from aiowebostv import WebOsClient, WebOsTvPairError
 
-from . import state, wol
+from . import discover, state, wol
 from .config import Settings
 
 log = logging.getLogger(__name__)
@@ -64,14 +64,49 @@ class TVDriver:
     # ------------------------------------------------------------------ #
     # Lifecycle
     # ------------------------------------------------------------------ #
+    def _active_host(self, saved: dict[str, Any] | None = None) -> str:
+        """The IP to use right now: last-discovered (state.json) wins over env."""
+        if saved is None:
+            saved = state.load(self.settings.state_path)
+        return saved.get("last_known_host") or self.settings.host
+
+    async def _rediscover(self, saved: dict[str, Any], previous_host: str) -> str | None:
+        """SSDP-probe for the TV and persist the new IP if it changed.
+
+        Only succeeds when the TV is ON (NIC answers SSDP). Returns the
+        discovered IP, or None if no LG webOS device responded.
+        """
+        discovered = await discover.discover_tv(
+            timeout_s=3.0, uuid_match=saved.get("uuid")
+        )
+        if discovered and discovered != previous_host:
+            saved["last_known_host"] = discovered
+            state.save(self.settings.state_path, saved)
+            log.warning(
+                "SSDP rediscovered TV at %s (was %s) — persisted to state.json",
+                discovered,
+                previous_host,
+            )
+        return discovered
+
     async def _ensure_client(self) -> WebOsClient:
         async with self._lock:
             if self._client is not None and self._client.is_connected():
                 return self._client
             saved = state.load(self.settings.state_path)
             key = saved.get("client_key")
-            self._client = WebOsClient(self.settings.host, client_key=key)
-            await self._client.connect()
+            host = self._active_host(saved)
+            try:
+                self._client = WebOsClient(host, client_key=key)
+                await self._client.connect()
+            except (OSError, ConnectionError, TimeoutError):
+                # Maybe the TV's IP rolled. SSDP-rediscover and retry once.
+                self._client = None
+                discovered = await self._rediscover(saved, host)
+                if not discovered or discovered == host:
+                    raise
+                self._client = WebOsClient(discovered, client_key=key)
+                await self._client.connect()
             # Persist any newly-issued key
             if self._client.client_key and self._client.client_key != key:
                 saved["client_key"] = self._client.client_key
@@ -105,13 +140,22 @@ class TVDriver:
         return client.client_key
 
     async def wake(self) -> None:
-        wol.send_wol(self.settings.mac, host=self.settings.host)
-        ready = await wol.wait_for_port(
-            self.settings.host, 3001, self.settings.wake_timeout
-        )
+        saved = state.load(self.settings.state_path)
+        host = self._active_host(saved)
+        wol.send_wol(self.settings.mac, host=host)
+        ready = await wol.wait_for_port(host, 3001, self.settings.wake_timeout)
+        if not ready:
+            # Stale IP? If the TV is on under a new lease, SSDP will find it.
+            discovered = await self._rediscover(saved, host)
+            if discovered and discovered != host:
+                wol.send_wol(self.settings.mac, host=discovered)
+                ready = await wol.wait_for_port(
+                    discovered, 3001, max(5, self.settings.wake_timeout // 2)
+                )
+                host = discovered
         if not ready:
             raise RuntimeError(
-                f"TV at {self.settings.host} did not become reachable on :3001 "
+                f"TV at {host} did not become reachable on :3001 "
                 f"within {self.settings.wake_timeout}s. "
                 "If the TV is fully powered off, WoL cannot wake it — check "
                 "Settings → General → Quick Start+ and Settings → Connection → "
