@@ -133,6 +133,10 @@ def create_app() -> FastAPI:
     async def get_state() -> dict[str, Any]:
         return await _wrap(driver.state_snapshot)()
 
+    @app.get("/playback")
+    async def get_playback() -> dict[str, Any]:
+        return await _wrap(driver.get_playback)()
+
     @app.post("/volume")
     async def volume(req: VolumeReq) -> dict[str, Any]:
         if (req.level is None) == (req.delta is None):

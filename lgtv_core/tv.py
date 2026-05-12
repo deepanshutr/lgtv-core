@@ -233,6 +233,32 @@ class TVDriver:
         c = await self._ensure_client()
         await c.change_sound_output(output)
 
+    async def get_playback(self) -> dict[str, Any]:
+        """Return media-playback info that's NOT in state_snapshot.
+
+        Useful for distinguishing "YouTube launched but parked on a profile
+        picker" from "YouTube actually playing a video". The TV doesn't
+        expose what specific YouTube video is playing (that's app-internal
+        state).
+
+        Each probe is independent: older WebOS firmwares (CX, 2020) don't
+        ship `com.webos.media/getForegroundAppInfo` and return a 404 for
+        it, so we surface that error per-field rather than failing the
+        whole endpoint.
+        """
+        c = await self._ensure_client()
+        out: dict[str, Any] = {}
+        for key, fn in (
+            ("media_foreground", c.get_media_foreground_app),
+            ("audio_status", c.get_audio_status),
+            ("current_app_id", c.get_current_app),
+        ):
+            try:
+                out[key] = await fn()
+            except Exception as e:
+                out[key] = {"error": str(e), "type": type(e).__name__}
+        return out
+
     async def launch_app(
         self,
         app_id: str,
