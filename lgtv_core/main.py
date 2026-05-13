@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from . import youtube_lounge
 from .config import load as load_settings
 from .tv import TVDriver
 
@@ -69,6 +70,18 @@ class KeyReq(BaseModel):
 class PointerMoveReq(BaseModel):
     dx: int
     dy: int
+
+
+class YoutubePairReq(BaseModel):
+    pairing_code: str = Field(
+        ...,
+        description="12-digit code from YouTube TV → Settings → Link with TV code (dashes/spaces optional)",
+    )
+
+
+class YoutubePlayReq(BaseModel):
+    video_id: str = Field(..., description="YouTube video ID, e.g. 'jNQXAC9IVRw'")
+    start_time_s: int = Field(0, ge=0, description="Start offset in seconds")
 
 
 # --------------------------------------------------------------------------- #
@@ -153,6 +166,10 @@ def create_app() -> FastAPI:
     async def sound_output(req: SoundOutputReq) -> dict[str, Any]:
         return await _wrap(lambda: driver.set_sound_output(req.output))()
 
+    @app.post("/app/close")
+    async def close_app(req: AppReq) -> dict[str, Any]:
+        return await _wrap(lambda: driver.close_app(req.id))()
+
     @app.post("/app/launch")
     async def launch_app(req: AppReq) -> dict[str, Any]:
         post_keys = (
@@ -185,6 +202,22 @@ def create_app() -> FastAPI:
     @app.post("/pointer/click")
     async def pointer_click() -> dict[str, Any]:
         return await _wrap(driver.pointer_click)()
+
+    @app.post("/youtube/pair")
+    async def yt_pair(req: YoutubePairReq) -> dict[str, Any]:
+        return await _wrap(
+            lambda: youtube_lounge.pair_with_code(req.pairing_code)
+        )()
+
+    @app.post("/youtube/play")
+    async def yt_play(req: YoutubePlayReq) -> dict[str, Any]:
+        return await _wrap(
+            lambda: youtube_lounge.play_video(req.video_id, req.start_time_s)
+        )()
+
+    @app.get("/youtube/status")
+    async def yt_status() -> dict[str, Any]:
+        return {"ok": True, **youtube_lounge.status()}
 
     return app
 

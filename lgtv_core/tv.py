@@ -89,7 +89,7 @@ class TVDriver:
             )
         return discovered
 
-    _CONNECT_TIMEOUT_S = 2.5
+    _CONNECT_TIMEOUT_S = 5.0
 
     async def _connect_with_timeout(self, client: WebOsClient) -> None:
         """Bound the WS connect so a bogus IP fails fast instead of hanging
@@ -232,6 +232,11 @@ class TVDriver:
         tv_speaker, external_arc, external_optical, bt_soundbar, headphone."""
         c = await self._ensure_client()
         await c.change_sound_output(output)
+
+    async def close_app(self, app_id: str) -> None:
+        """Close a specific app (full unload, not just background)."""
+        c = await self._ensure_client()
+        await c.close_app(app_id)
 
     async def get_playback(self) -> dict[str, Any]:
         """Return media-playback info that's NOT in state_snapshot.
