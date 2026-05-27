@@ -108,12 +108,29 @@ def create_app() -> FastAPI:
                 type(e).__name__,
             )
 
+    async def _refresh_lounge_token() -> None:
+        """Background YouTube Lounge token refresh on boot. Same rationale
+        as _eager_connect: must not block lifespan startup. refresh_if_stale
+        is itself best-effort and never raises, but we wrap defensively."""
+        try:
+            refreshed = await youtube_lounge.refresh_if_stale()
+            if refreshed:
+                log.info("YouTube Lounge token refreshed at startup")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.info(
+                "Startup Lounge refresh skipped: %s", type(e).__name__
+            )
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         warm_task = asyncio.create_task(_eager_connect())
+        yt_task = asyncio.create_task(_refresh_lounge_token())
         yield
-        if not warm_task.done():
-            warm_task.cancel()
+        for t in (warm_task, yt_task):
+            if not t.done():
+                t.cancel()
         await driver.aclose()
 
     app = FastAPI(title="lgtv-core", version="0.1.0", lifespan=lifespan)
@@ -214,6 +231,10 @@ def create_app() -> FastAPI:
         return await _wrap(
             lambda: youtube_lounge.play_video(req.video_id, req.start_time_s)
         )()
+
+    @app.post("/youtube/refresh")
+    async def yt_refresh() -> dict[str, Any]:
+        return await _wrap(youtube_lounge.refresh_token)()
 
     @app.get("/youtube/status")
     async def yt_status() -> dict[str, Any]:
